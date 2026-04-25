@@ -25,25 +25,34 @@ jobs:
           go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
+      - name: Prepare Targets List
+        run: |
+          # Explicitly add the main domain to the target list first
+          echo "${{ github.event.inputs.target_domain }}" > all_targets.txt
+
       - name: Enumerate Subdomains
         run: |
+          # Find subdomains and append them to the target list
           subfinder -d ${{ github.event.inputs.target_domain }} -silent -o subdomains.txt
-          echo "Found subdomains:"
-          cat subdomains.txt
-
-      - name: Port Scan Discovered Domains
-        # Scans top 100 ports using nmap. Adjust -F to -p- for all ports, but be mindful of GitHub Actions time limits.
-        run: |
           if [ -s subdomains.txt ]; then
-            nmap -iL subdomains.txt -F -oN nmap_results.txt
-          else
-            echo "No subdomains found to scan."
+            cat subdomains.txt >> all_targets.txt
           fi
+          
+          # Remove any potential duplicates
+          sort -u all_targets.txt -o all_targets.txt
+          
+          echo "Final target list for scanning:"
+          cat all_targets.txt
+
+      - name: Port Scan All Targets
+        run: |
+          # Scan the main domain and all discovered subdomains
+          nmap -iL all_targets.txt -F -oN nmap_results.txt
 
       - name: Upload Results
         uses: actions/upload-artifact@v4
         with:
           name: recon-results
           path: |
-            subdomains.txt
+            all_targets.txt
             nmap_results.txt
