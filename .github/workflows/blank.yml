@@ -1,0 +1,49 @@
+name: Attack Surface Mapping (Authorized Scans Only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_domain:
+        description: 'Target Domain (MUST BE AUTHORIZED)'
+        required: true
+        type: string
+
+jobs:
+  recon:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nmap jq
+
+      - name: Install Subfinder
+        run: |
+          go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      - name: Enumerate Subdomains
+        run: |
+          subfinder -d ${{ github.event.inputs.target_domain }} -silent -o subdomains.txt
+          echo "Found subdomains:"
+          cat subdomains.txt
+
+      - name: Port Scan Discovered Domains
+        # Scans top 100 ports using nmap. Adjust -F to -p- for all ports, but be mindful of GitHub Actions time limits.
+        run: |
+          if [ -s subdomains.txt ]; then
+            nmap -iL subdomains.txt -F -oN nmap_results.txt
+          else
+            echo "No subdomains found to scan."
+          fi
+
+      - name: Upload Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: recon-results
+          path: |
+            subdomains.txt
+            nmap_results.txt
